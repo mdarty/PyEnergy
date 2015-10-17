@@ -2,3 +2,6 @@ venv
 *~
 wheelhouse
 __pycache__
+.*.swp
+*.png
+MCP3008.py
