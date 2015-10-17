@@ -2,27 +2,28 @@
 import unittest
 from pyenergy import pyenergy
 import numpy as np
-from math import sin, sqrt, cos, pi
+from math import sin, sqrt, acos
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
 
-w=60.0
-theta=0.0
-samples = 400
-Vrms=117.0
-Vpeak=Vrms*sqrt(2.0)
-V = np.array([ Vpeak*sin(w*t/samples+theta) for t in range(samples) ])
-theta=pi/4.0
-Arms=15.0
-Apeak=Arms*sqrt(2.0)
-A = np.array([ Apeak*sin(w*t/samples+theta) for t in range(samples) ])
+w = 60.0
+theta = 0.0
+samples = 200
+d = 3.5
+Vrms = 117.0
+Vpeak = Vrms*sqrt(2.0)
+time = np.array([t/samples for t in range(int(samples/d))])
+V = np.array([Vpeak*sin(w*float(t)/samples+theta) for t in range(int(samples/d))])
+PF = 0.85
+theta = acos(PF)
+Arms = 15.0
+Apeak = Arms*sqrt(2.0)
+A = np.array([Apeak*sin(w*float(t)/samples+theta) for t in range(int(samples/d))])
 
 p = pyenergy()
-p.calc(V, A, axis=0)
+p.calc2(time, V, A, axis=0)
 
-# print("{:.2f} V".format(p.Vrms))
-# print("{:.2f} A".format(p.Arms))
-# print("{:.2f} VA".format(p.VA))
-# print("{:.2f} PF".format(p.PF))
-# print("{:.2f} W".format(p.W))
 
 class TestPyEnergy(unittest.TestCase):
     def setUp(self):
@@ -37,8 +38,15 @@ class TestPyEnergy(unittest.TestCase):
     def test_VA(self):
         self.assertEqual(round(p.VA), round(Vrms*Arms))
 
+    def test_PF(self):
+        self.assertEqual(round(p.PF, 2), round(PF, 2))
+
     def test_W(self):
-        self.assertEqual(round(p.W), round(abs(Vrms*Arms*cos(theta))))
+        self.assertEqual(round(p.W), round(abs(Vrms*Arms*PF)))
 
 if __name__ == '__main__':
+        plt.plot(time, V/Vpeak)
+        plt.plot(time, A/Apeak)
+        plt.plot(time, (V/Vpeak * A/Apeak).clip(0))
+        plt.savefig('pye.png')
         unittest.main()
