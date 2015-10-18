@@ -1,7 +1,20 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 import numpy as np
+from os import nice
+from time import sleep
 from math import sqrt, cos
+from signal import signal, SIGINT
 from scipy.optimize import leastsq
+from multiprocessing import Process, Pipe
+
+
+def signal_handler(signal, frame):
+    global end
+    end = True
+
+global end
+end = False
+signal(SIGINT, signal_handler)
 
 
 class pyenergy:
@@ -51,3 +64,59 @@ class pyenergy:
         self.W = np.zeros(phase)
         for i in range(phase):
             self.reg_calc(time, Voltage[i], Amperage[i], i)
+
+
+def worker(conn_time, conn_volt, conn_amps):
+    nice(1)
+    input_time.close()
+    input_volt.close()
+    input_amps.close()
+    p = pyenergy()
+    samples = 200
+    time = [None] * samples
+    Voltage = [None] * samples
+    Amperage = [None] * samples
+    while True:
+        for i in range(samples):
+            try:
+                time[i] = conn_time.recv()
+                Voltage[i] = conn_volt.recv()
+                Amperage[i] = conn_amps.recv()
+            except EOFError:
+                return
+        time = np.array(time)
+        Voltage = np.array(Voltage)
+        Amperage = np.array(Amperage)
+        p.calc(time, np.transpose(Voltage), np.transpose(Amperage))
+        print(time[199])
+
+
+if __name__ == '__main__':
+    output_time, input_time = Pipe(False)
+    output_volt, input_volt = Pipe(False)
+    output_amps, input_amps = Pipe(False)
+    p = Process(target=worker, args=(output_time, output_volt, output_amps))
+    p.start()
+    Hz = 5000.0
+    samples = 200
+    d = 3.5
+    w = np.array([60.0, 60.0, 60.0])
+    theta = np.array([0.0, 0.0, 0.0])
+    Vrms = np.array([117.0, 117.0, 117.0])
+    Vpeak = Vrms*sqrt(2.0)
+    APF = np.array([1.0, 0.85, 0.65])
+    Atheta = np.arccos(APF)
+    Arms = np.array([15.0, 15.0, 15.0])
+    Apeak = Arms*sqrt(2.0)
+    for t in range(10**10):
+            input_time.send(t/samples)
+            input_volt.send(Vpeak*np.sin(w*float(t)/samples+theta))
+            input_amps.send(Apeak*np.sin(w*float(t)/samples+Atheta))
+            if end:
+                break
+            sleep(1.0/Hz)
+    input_time.close()
+    input_volt.close()
+    input_amps.close()
+    p.join()
+    print("\nExiting Gracefully")
