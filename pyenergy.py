@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Python Energy Logger"""
 import numpy as np
 from os import nice
 from time import sleep
@@ -9,6 +10,7 @@ from multiprocessing import Process, Pipe
 
 
 def signal_handler(signal, frame):
+    """Allows graceful exit"""
     global end
     end = True
 
@@ -17,7 +19,8 @@ end = False
 signal(SIGINT, signal_handler)
 
 
-class pyenergy:
+class pyenergy(object):
+    """Python Energy Logger"""
     def __init__(self):
         '''
             Should work for split phase, single phase, or 3 phase
@@ -52,9 +55,10 @@ class pyenergy:
         self.PF[phase] = abs(cos(AC[2]-VC[2]))
         self.W[phase] = self.VA[phase] * self.PF[phase]
 
-    def calc(self, time, Voltage, Amperage, axis=1):
-        if Voltage.ndim > 1:
-            phase = len(Voltage)
+    def calc(self, time, voltage, amperage, axis=1):
+        """Calculates Power"""
+        if voltage.ndim > 1:
+            phase = len(voltage)
         else:
             phase = 1
         self.Vrms = np.zeros(phase)
@@ -63,31 +67,32 @@ class pyenergy:
         self.PF = np.zeros(phase)
         self.W = np.zeros(phase)
         for i in range(phase):
-            self.reg_calc(time, Voltage[i], Amperage[i], i)
+            self.reg_calc(time, voltage[i], amperage[i], i)
 
 
 def worker(conn_time, conn_volt, conn_amps):
+    """Thread for calcualating the raw data"""
     nice(1)
     input_time.close()
     input_volt.close()
     input_amps.close()
-    p = pyenergy()
+    calculator = pyenergy()
     samples = 200
     time = [None] * samples
-    Voltage = [None] * samples
-    Amperage = [None] * samples
+    voltage = [None] * samples
+    amperage = [None] * samples
     while True:
         for i in range(samples):
             try:
                 time[i] = conn_time.recv()
-                Voltage[i] = conn_volt.recv()
-                Amperage[i] = conn_amps.recv()
+                voltage[i] = conn_volt.recv()
+                amperage[i] = conn_amps.recv()
             except EOFError:
                 return
         time = np.array(time)
-        Voltage = np.array(Voltage)
-        Amperage = np.array(Amperage)
-        p.calc(time, np.transpose(Voltage), np.transpose(Amperage))
+        volt = np.array(voltage)
+        amp = np.array(amperage)
+        calculator.calc(time, np.transpose(volt), np.transpose(amp))
         print(time[199])
 
 
@@ -95,8 +100,8 @@ if __name__ == '__main__':
     output_time, input_time = Pipe(False)
     output_volt, input_volt = Pipe(False)
     output_amps, input_amps = Pipe(False)
-    p = Process(target=worker, args=(output_time, output_volt, output_amps))
-    p.start()
+    CALC_THREAD = Process(target=worker, args=(output_time, output_volt, output_amps))
+    CALC_THREAD.start()
     Hz = 5000.0
     samples = 200
     d = 3.5
@@ -109,14 +114,14 @@ if __name__ == '__main__':
     Arms = np.array([15.0, 15.0, 15.0])
     Apeak = Arms*sqrt(2.0)
     for t in range(10**10):
-            input_time.send(t/samples)
-            input_volt.send(Vpeak*np.sin(w*float(t)/samples+theta))
-            input_amps.send(Apeak*np.sin(w*float(t)/samples+Atheta))
-            if end:
-                break
-            sleep(1.0/Hz)
+        input_time.send(t/samples)
+        input_volt.send(Vpeak*np.sin(w*float(t)/samples+theta))
+        input_amps.send(Apeak*np.sin(w*float(t)/samples+Atheta))
+        if end:
+            break
+        sleep(1.0/Hz)
     input_time.close()
     input_volt.close()
     input_amps.close()
-    p.join()
+    CALC_THREAD.join()
     print("\nExiting Gracefully")
